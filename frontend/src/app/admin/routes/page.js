@@ -23,19 +23,22 @@ export default function RoutesPage() {
 
   useEffect(() => {
     if (!user) return;
+
     const fetchAgents = async () => {
       try {
-        const res = await api.get("/api/admin/interns", authConfig(user.token));
-        setAgents(res.data);
-      } catch (err) {
-        console.error(err);
+        const response = await api.get("/api/admin/interns", authConfig(user.token));
+        setAgents(response.data);
+      } catch (error) {
+        console.error(error);
       }
     };
+
     fetchAgents();
   }, [user]);
 
   const fetchRoute = useCallback(async () => {
     if (!user || !selectedAgent) return;
+
     setLoading(true);
     try {
       const [routeRes, dwellRes] = await Promise.all([
@@ -44,8 +47,8 @@ export default function RoutesPage() {
       ]);
       setRouteData(routeRes.data);
       setDwellZones(dwellRes.data);
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
     }
     setLoading(false);
   }, [user, selectedAgent, selectedDate]);
@@ -56,6 +59,7 @@ export default function RoutesPage() {
 
   const downloadDailyReport = async () => {
     if (!user) return;
+
     try {
       const response = await api.get(`/api/admin/reports/daily/export?date=${selectedDate}`, {
         ...authConfig(user.token),
@@ -69,8 +73,8 @@ export default function RoutesPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -79,9 +83,9 @@ export default function RoutesPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 ml-[260px] flex flex-col overflow-hidden">
-        <header className="flex justify-between items-center px-7 py-4 bg-white/60 backdrop-blur-lg border-b border-border sticky top-0 z-40">
-          <div className="flex items-center gap-3">
+      <main className="flex-1 md:ml-[260px] flex flex-col overflow-hidden">
+        <header className="flex flex-col gap-3 px-4 py-4 pt-16 md:px-7 md:pt-4 bg-white/60 backdrop-blur-lg border-b border-border sticky top-0 z-40 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3 pr-10 md:pr-0">
             <Link href="/admin" className="w-8 h-8 rounded-xl bg-surface-alt border border-border flex items-center justify-center text-text-muted hover:text-text-primary transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </Link>
@@ -92,7 +96,7 @@ export default function RoutesPage() {
               <p className="text-text-muted text-[11px] mt-0.5">Visualize routes, client stops, and GPS quality</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={downloadDailyReport} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border bg-white text-text-secondary border-border hover:text-primary hover:border-primary/20 transition-all">
               <Download className="w-3.5 h-3.5" /> Day Report
             </button>
@@ -105,12 +109,12 @@ export default function RoutesPage() {
           </div>
         </header>
 
-        <div className="flex flex-1 overflow-hidden">
-          <div className="w-[300px] flex flex-col border-r border-border bg-white">
+        <div className="flex flex-1 flex-col xl:flex-row overflow-hidden">
+          <div className="w-full xl:w-[300px] flex flex-col border-b xl:border-b-0 xl:border-r border-border bg-white max-h-[60vh] xl:max-h-none overflow-hidden">
             <div className="p-5 border-b border-border">
               <label className="text-[11px] text-text-muted font-semibold uppercase tracking-wider mb-2 block">Select Agent</label>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                {agents.map(agent => (
+                {agents.map((agent) => (
                   <button
                     key={agent._id}
                     onClick={() => setSelectedAgent(agent)}
@@ -132,11 +136,11 @@ export default function RoutesPage() {
               <label className="text-[11px] text-text-muted font-semibold uppercase tracking-wider mb-2 block flex items-center gap-1">
                 <Calendar className="w-3 h-3" /> Date
               </label>
-              <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} max={new Date().toISOString().split("T")[0]} className="input-sharpkode text-sm" />
+              <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} max={new Date().toISOString().split("T")[0]} className="input-sharpkode text-sm" />
             </div>
 
             {routeData && !loading && (
-              <div className="p-5 space-y-3 overflow-y-auto">
+              <div className="p-4 md:p-5 space-y-3 overflow-y-auto">
                 <h3 className="text-[11px] text-text-muted font-semibold uppercase tracking-wider">Summary</h3>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="stat-card p-3">
@@ -177,8 +181,8 @@ export default function RoutesPage() {
                   <div>
                     <h3 className="text-[11px] text-text-muted font-semibold uppercase tracking-wider mb-2">Client Stops ({routeData.visitedClients.length})</h3>
                     <div className="space-y-1.5 max-h-52 overflow-y-auto">
-                      {routeData.visitedClients.map((client, i) => (
-                        <motion.div key={client._id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="p-3 bg-brand-50 border border-brand-100 rounded-xl">
+                      {routeData.visitedClients.map((client, index) => (
+                        <motion.div key={client._id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.04 }} className="p-3 bg-brand-50 border border-brand-100 rounded-xl">
                           <div className="flex justify-between items-start gap-2">
                             <div>
                               <p className="text-xs font-bold text-primary">{client.clientName}</p>
@@ -197,8 +201,8 @@ export default function RoutesPage() {
                   <div>
                     <h3 className="text-[11px] text-text-muted font-semibold uppercase tracking-wider mb-2">Dwell Zones ({dwellZones.length})</h3>
                     <div className="space-y-1.5 max-h-60 overflow-y-auto">
-                      {dwellZones.map((zone, i) => (
-                        <motion.div key={i} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
+                      {dwellZones.map((zone, index) => (
+                        <motion.div key={index} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.04 }} className="p-3 bg-violet-50 border border-violet-100 rounded-xl">
                           <div className="flex justify-between items-start">
                             <p className="text-xs font-bold text-violet-600">Stay {zone.durationMinutes} min</p>
                             <span className="text-[9px] text-text-muted">{new Date(zone.enteredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
@@ -216,7 +220,7 @@ export default function RoutesPage() {
             {!selectedAgent && !loading && <div className="flex-1 flex items-center justify-center p-8"><p className="text-text-muted text-xs text-center">Select an agent to view their route</p></div>}
           </div>
 
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-[420px] xl:min-h-0">
             {viewMode === "route" ? (
               <RouteMap logs={routeData?.logs || []} visitedClients={routeData?.visitedClients || []} dwellZones={dwellZones} showDwell={true} />
             ) : (

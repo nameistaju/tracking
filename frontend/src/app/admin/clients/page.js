@@ -38,7 +38,7 @@ export default function ClientsPage() {
   }, [user]);
 
   const filteredClients = useMemo(() => {
-    return clients.filter(client => {
+    return clients.filter((client) => {
       const matchesSearch = !search || [
         client.businessName,
         client.clientName,
@@ -47,7 +47,7 @@ export default function ClientsPage() {
         client.addressText,
         client.address?.formatted,
         client.userId?.name
-      ].filter(Boolean).some(value => value.toLowerCase().includes(search.toLowerCase()));
+      ].filter(Boolean).some((value) => value.toLowerCase().includes(search.toLowerCase()));
 
       const matchesStatus = !status || client.status === status;
       const matchesIntern = !internId || client.userId?._id === internId;
@@ -86,9 +86,9 @@ export default function ClientsPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="flex-1 ml-[260px] flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between px-7 py-4 bg-white/70 backdrop-blur-xl border-b border-border sticky top-0 z-40">
-          <div className="flex items-center gap-3">
+      <main className="flex-1 md:ml-[260px] flex flex-col overflow-hidden">
+        <header className="flex flex-col gap-3 items-start justify-between px-4 py-4 pt-16 md:px-7 md:pt-4 bg-white/70 backdrop-blur-xl border-b border-border sticky top-0 z-40 lg:flex-row lg:items-center">
+          <div className="flex items-center gap-3 pr-10 md:pr-0">
             <Link href="/admin" className="w-8 h-8 rounded-xl bg-surface-alt border border-border flex items-center justify-center text-text-muted hover:text-text-primary transition-colors">
               <ArrowLeft className="w-4 h-4" />
             </Link>
@@ -104,18 +104,18 @@ export default function ClientsPage() {
           </button>
         </header>
 
-        <div className="p-6 space-y-4 overflow-y-auto">
-          <div className="grid grid-cols-4 gap-3">
-            <div className="relative col-span-2">
+        <div className="p-4 md:p-6 space-y-4 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="relative md:col-span-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
               <input
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search business, client, phone, email..."
                 className="input-sharpkode pl-10"
               />
             </div>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} className="input-sharpkode">
+            <select value={status} onChange={(event) => setStatus(event.target.value)} className="input-sharpkode">
               <option value="">All statuses</option>
               <option value="new">New</option>
               <option value="contacted">Contacted</option>
@@ -125,26 +125,26 @@ export default function ClientsPage() {
               <option value="follow-up">Follow-up</option>
               <option value="not-interested">Not Interested</option>
             </select>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input-sharpkode" />
+            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input-sharpkode" />
           </div>
 
-          <div className="grid grid-cols-[1fr_260px] gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-4">
             <div className="bg-white rounded-2xl border border-border overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-5 py-4 border-b border-border">
                 <div>
                   <p className="text-sm font-bold text-text-primary">{filteredClients.length} client records</p>
                   <p className="text-[11px] text-text-muted">Includes GPS quality and visit outcome</p>
                 </div>
-                <select value={internId} onChange={(e) => setInternId(e.target.value)} className="input-sharpkode max-w-[220px]">
+                <select value={internId} onChange={(event) => setInternId(event.target.value)} className="input-sharpkode w-full md:max-w-[220px]">
                   <option value="">All interns</option>
-                  {interns.map(intern => (
+                  {interns.map((intern) => (
                     <option key={intern._id} value={intern._id}>{intern.name}</option>
                   ))}
                 </select>
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm min-w-[760px]">
                   <thead className="bg-surface-alt text-text-muted">
                     <tr className="text-left">
                       <th className="px-4 py-3">Client</th>
@@ -160,7 +160,7 @@ export default function ClientsPage() {
                       <tr><td className="px-4 py-10 text-center text-text-muted" colSpan={6}>Loading client details...</td></tr>
                     ) : filteredClients.length === 0 ? (
                       <tr><td className="px-4 py-10 text-center text-text-muted" colSpan={6}>No client records match these filters.</td></tr>
-                    ) : filteredClients.map(client => (
+                    ) : filteredClients.map((client) => (
                       <tr key={client._id} className="border-t border-border-light align-top">
                         <td className="px-4 py-4">
                           <p className="font-semibold text-text-primary">{client.clientName}</p>
@@ -199,13 +199,13 @@ export default function ClientsPage() {
               <div className="stat-card">
                 <p className="text-[11px] text-text-muted uppercase tracking-wider">High GPS Quality</p>
                 <p className="text-3xl font-extrabold text-text-primary mt-1">
-                  {filteredClients.filter(client => client.gps?.quality === "high").length}
+                  {filteredClients.filter((client) => client.gps?.quality === "high").length}
                 </p>
               </div>
               <div className="stat-card">
                 <p className="text-[11px] text-text-muted uppercase tracking-wider">Converted</p>
                 <p className="text-3xl font-extrabold text-text-primary mt-1">
-                  {filteredClients.filter(client => client.status === "converted").length}
+                  {filteredClients.filter((client) => client.status === "converted").length}
                 </p>
               </div>
             </div>

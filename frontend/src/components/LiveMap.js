@@ -1,9 +1,11 @@
 "use client";
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
+
+const ANIMATION_DURATION = 1200;
 
 // Inject light-theme map styles
 const injectStyles = () => {
@@ -341,12 +343,87 @@ function AgentPopupContent({ agent }) {
 
 export default function LiveMap({ agents = [], focusedAgentId = null }) {
   const [mounted, setMounted] = useState(false);
+  const [animatedAgents, setAnimatedAgents] = useState([]);
   const markerRefs = useRef({});
+  const animationFrameRef = useRef(null);
+  const previousPositionsRef = useRef({});
 
   useEffect(() => {
     injectStyles();
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!agents.length) {
+      setAnimatedAgents([]);
+      previousPositionsRef.current = {};
+      return undefined;
+    }
+
+    const nextPositions = {};
+    const animationTargets = agents.map((agent) => {
+      const latest = agent.lastSeen?.lat ? {
+        lat: agent.lastSeen.lat,
+        lng: agent.lastSeen.lng,
+      } : null;
+
+      if (latest) {
+        nextPositions[agent._id] = latest;
+      }
+
+      return {
+        ...agent,
+        startPosition: previousPositionsRef.current[agent._id] || latest,
+        endPosition: latest,
+      };
+    });
+
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    const startedAt = performance.now();
+
+    const tick = (now) => {
+      const progress = Math.min((now - startedAt) / ANIMATION_DURATION, 1);
+
+      setAnimatedAgents(
+        animationTargets.map((agent) => {
+          if (!agent.startPosition || !agent.endPosition) {
+            return agent;
+          }
+
+          const lat = agent.startPosition.lat + (agent.endPosition.lat - agent.startPosition.lat) * progress;
+          const lng = agent.startPosition.lng + (agent.endPosition.lng - agent.startPosition.lng) * progress;
+
+          return {
+            ...agent,
+            lastSeen: {
+              ...agent.lastSeen,
+              lat,
+              lng,
+            },
+          };
+        })
+      );
+
+      if (progress < 1) {
+        animationFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        previousPositionsRef.current = nextPositions;
+        animationFrameRef.current = null;
+      }
+    };
+
+    animationFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [agents]);
 
   if (!mounted) {
     return (
@@ -359,7 +436,7 @@ export default function LiveMap({ agents = [], focusedAgentId = null }) {
     );
   }
 
-  const agentsWithLocation = agents.filter(a => a.lastSeen?.lat);
+  const agentsWithLocation = animatedAgents.filter(a => a.lastSeen?.lat);
   const center = agentsWithLocation.length > 0
     ? [agentsWithLocation[0].lastSeen.lat, agentsWithLocation[0].lastSeen.lng]
     : [20.5937, 78.9629];

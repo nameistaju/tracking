@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import "leaflet/dist/leaflet.css";
 import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
+import { fetchMapboxRoute } from "@/lib/mapboxRoute";
 
 const injectStyles = () => {
   if (typeof document === 'undefined') return;
@@ -58,12 +59,42 @@ const createClientIcon = () => L.divIcon({
   className: '', iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -12]
 });
 
+const toLatLng = (log) => [log.location.lat, log.location.lng];
+
 export default function RouteMap({ logs = [], visitedClients = [], dwellZones = [], showDwell = true }) {
   const [mounted, setMounted] = useState(false);
+  const [routePositions, setRoutePositions] = useState([]);
 
   useEffect(() => { injectStyles(); setMounted(true); }, []);
 
-  const positions = useMemo(() => logs.map(log => [log.location.lat, log.location.lng]), [logs]);
+  const positions = useMemo(() => logs.map(toLatLng), [logs]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadRoute = async () => {
+      if (positions.length < 2) {
+        setRoutePositions(positions);
+        return;
+      }
+
+      try {
+        if (!isCancelled) {
+          setRoutePositions(await fetchMapboxRoute(positions));
+        }
+      } catch (_error) {
+        if (!isCancelled) {
+          setRoutePositions(positions);
+        }
+      }
+    };
+
+    loadRoute();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [positions]);
 
   if (!mounted) {
     return (
@@ -92,7 +123,7 @@ export default function RouteMap({ logs = [], visitedClients = [], dwellZones = 
       <MapContainer center={positions[0]} zoom={13} style={{ height: "100%", width: "100%" }} zoomControl={false}>
         <TileLayer url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png" attribution='&copy; OSM &copy; CARTO' />
         <FitRoute points={positions} />
-        <Polyline positions={positions} pathOptions={{ color: '#2570eb', weight: 3, opacity: 0.8, lineCap: 'round', lineJoin: 'round' }} />
+        <Polyline positions={routePositions.length > 1 ? routePositions : positions} pathOptions={{ color: '#2570eb', weight: 4, opacity: 0.82, lineCap: 'round', lineJoin: 'round' }} />
         <Marker position={positions[0]} icon={createEndpointIcon('start')}>
           <Popup><div style={{padding:"4px",minWidth:"140px",fontFamily:"'Inter',sans-serif"}}><div style={{fontSize:"10px",color:"#2570eb",fontWeight:"800",textTransform:"uppercase",letterSpacing:"1px"}}>Start</div><div style={{fontSize:"12px",color:"#475569",marginTop:"4px"}}>{logs[0]?.address?.formatted||`${logs[0]?.location.lat.toFixed(4)}, ${logs[0]?.location.lng.toFixed(4)}`}</div><div style={{fontSize:"11px",color:"#94a3b8",marginTop:"2px"}}>{new Date(logs[0]?.timestamp).toLocaleTimeString()}</div></div></Popup>
         </Marker>

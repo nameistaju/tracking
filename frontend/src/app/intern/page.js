@@ -32,7 +32,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import api, { authConfig, buildApiUrl } from "@/lib/api";
 
-const LOCATION_INTERVAL = 30000;
+const LOCATION_PUSH_INTERVAL = 7000;
+const LOCATION_MIN_DISTANCE_METERS = 15;
 
 const getGpsQuality = (accuracy) => {
   if (typeof accuracy !== "number") return "unknown";
@@ -55,8 +56,9 @@ export default function InternPage() {
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const trackingIntervalRef = useRef(null);
   const watchIdRef = useRef(null);
+  const lastSentAtRef = useRef(0);
+  const lastSentLocationRef = useRef(null);
 
   const [leadForm, setLeadForm] = useState({
     businessName: "",
@@ -119,55 +121,94 @@ export default function InternPage() {
       request.onerror = () => reject(request.error);
     });
 
-  const pushLocation = async () => {
-    if (!user || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const nextAccuracy = pos.coords.accuracy ?? null;
-      try {
-        const payload = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: nextAccuracy,
-          speed: pos.coords.speed,
-          heading: pos.coords.heading,
-          altitude: pos.coords.altitude,
-          altitudeAccuracy: pos.coords.altitudeAccuracy,
-          battery: batteryLevel
-        };
-        const { data } = await api.post("/api/intern/location", payload, authConfig(user.token));
-        setLastPing(new Date());
-        setLastAddress(data.address || null);
-        setGpsAccuracy(nextAccuracy);
-        setGpsQualityState(data.gpsQuality || getGpsQuality(nextAccuracy));
-      } catch (_err) {
-        if (!navigator.onLine && "serviceWorker" in navigator) {
-          try {
-            const reg = await navigator.serviceWorker.ready;
-            const db = await openDB();
-            const tx = db.transaction("pending-locations", "readwrite");
-            tx.objectStore("pending-locations").add({
-              url: buildApiUrl("/api/intern/location"),
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
-              body: { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: nextAccuracy },
-            });
-            await reg.sync.register("sync-location");
-          } catch (_e) {}
-        }
+  const getDistanceInMeters = (start, end) => {
+    if (!start || !end) return Number.POSITIVE_INFINITY;
+
+    const toRadians = (value) => (value * Math.PI) / 180;
+    const earthRadius = 6371000;
+    const deltaLat = toRadians(end.lat - start.lat);
+    const deltaLng = toRadians(end.lng - start.lng);
+    const a =
+      Math.sin(deltaLat / 2) ** 2 +
+      Math.cos(toRadians(start.lat)) * Math.cos(toRadians(end.lat)) * Math.sin(deltaLng / 2) ** 2;
+
+    return 2 * earthRadius * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  const shouldSendLocation = (nextLocation) => {
+    const now = Date.now();
+
+    if (!lastSentLocationRef.current) {
+      return true;
+    }
+
+    if (now - lastSentAtRef.current >= LOCATION_PUSH_INTERVAL) {
+      return true;
+    }
+
+    return getDistanceInMeters(lastSentLocationRef.current, nextLocation) >= LOCATION_MIN_DISTANCE_METERS;
+  };
+
+  const sendLocation = async (coords) => {
+    if (!user) return;
+
+    const nextAccuracy = coords.accuracy ?? null;
+
+    try {
+      const payload = {
+        lat: coords.latitude,
+        lng: coords.longitude,
+        accuracy: nextAccuracy,
+        speed: coords.speed,
+        heading: coords.heading,
+        altitude: coords.altitude,
+        altitudeAccuracy: coords.altitudeAccuracy,
+        battery: batteryLevel
+      };
+      const { data } = await api.post("/api/intern/location", payload, authConfig(user.token));
+      setLastPing(new Date());
+      setLastAddress(data.address || null);
+      setGpsAccuracy(nextAccuracy);
+      setGpsQualityState(data.gpsQuality || getGpsQuality(nextAccuracy));
+      lastSentAtRef.current = Date.now();
+      lastSentLocationRef.current = { lat: coords.latitude, lng: coords.longitude };
+    } catch (_err) {
+      if (!navigator.onLine && "serviceWorker" in navigator) {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          const db = await openDB();
+          const tx = db.transaction("pending-locations", "readwrite");
+          tx.objectStore("pending-locations").add({
+            url: buildApiUrl("/api/intern/location"),
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${user.token}` },
+            body: { lat: coords.latitude, lng: coords.longitude, accuracy: nextAccuracy },
+          });
+          await reg.sync.register("sync-location");
+        } catch (_e) {}
       }
-    }, () => {}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    }
   };
 
   const startBackgroundTracking = () => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation || watchIdRef.current !== null) return;
     setIsTracking(true);
-    pushLocation();
-    trackingIntervalRef.current = setInterval(pushLocation, LOCATION_INTERVAL);
-    if (watchIdRef.current === null) {
-      watchIdRef.current = navigator.geolocation.watchPosition((pos) => {
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const nextLocation = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        };
+
         setGpsAccuracy(pos.coords.accuracy ?? null);
         setGpsQualityState(getGpsQuality(pos.coords.accuracy ?? null));
-      }, () => {}, { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
-    }
+
+        if (shouldSendLocation(nextLocation)) {
+          sendLocation(pos.coords);
+        }
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+    );
     if (user) {
       api.post("/api/intern/tracking-status", { status: "active" }, authConfig(user.token)).catch(() => {});
     }
@@ -175,11 +216,12 @@ export default function InternPage() {
 
   const stopBackgroundTracking = () => {
     setIsTracking(false);
-    if (trackingIntervalRef.current) clearInterval(trackingIntervalRef.current);
     if (watchIdRef.current !== null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    lastSentAtRef.current = 0;
+    lastSentLocationRef.current = null;
     if (user) {
       api.post("/api/intern/tracking-status", { status: "stopped" }, authConfig(user.token)).catch(() => {});
     }
