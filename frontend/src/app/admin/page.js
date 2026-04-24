@@ -7,6 +7,7 @@ import {
   Target,
   Activity,
   Radio,
+  Bell,
   RefreshCw,
   MapPin,
   Clock,
@@ -184,6 +185,9 @@ export default function AdminPage() {
             </Link>
             <Link href="/admin/routes" className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium bg-white border border-border text-text-secondary hover:text-primary hover:border-primary/20 hover:shadow-sm transition-all">
               <Route className="w-3.5 h-3.5" /> Routes
+            </Link>
+            <Link href="/admin/notifications" className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium bg-white border border-border text-text-secondary hover:text-primary hover:border-primary/20 hover:shadow-sm transition-all">
+              <Bell className="w-3.5 h-3.5" /> Alerts
             </Link>
             <Link href="/admin/analytics" className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium bg-white border border-border text-text-secondary hover:text-violet-500 hover:border-violet-200 hover:shadow-sm transition-all">
               <BarChart3 className="w-3.5 h-3.5" /> Analytics

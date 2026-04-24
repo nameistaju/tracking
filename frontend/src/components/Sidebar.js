@@ -7,6 +7,7 @@ import {
   Route,
   BarChart3,
   Building2,
+  Bell,
   Settings,
   LogOut,
   ChevronRight,
@@ -30,6 +31,7 @@ export default function Sidebar() {
     { name: "Dashboard", icon: LayoutDashboard, path: "/admin", description: "Overview & live map" },
     { name: "Clients", icon: Building2, path: "/admin/clients", description: "Client details & exports" },
     { name: "Routes", icon: Route, path: "/admin/routes", description: "Field movement tracking" },
+    { name: "Notifications", icon: Bell, path: "/admin/notifications", description: "Alert center" },
     { name: "Analytics", icon: BarChart3, path: "/admin/analytics", description: "Performance insights" },
     { name: "Settings", icon: Settings, path: "/admin/settings", description: "Preferences & config" },
   ];
