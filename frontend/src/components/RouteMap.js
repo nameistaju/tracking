@@ -59,9 +59,23 @@ const createClientIcon = () => L.divIcon({
   className: '', iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -12]
 });
 
+const createBreakIcon = (type) => {
+  const isStart = type === "break_start";
+  const color = isStart ? "#f59e0b" : "#8b5cf6";
+  const label = isStart ? "B" : "R";
+
+  return L.divIcon({
+    html: `<div style="width:24px;height:24px;border-radius:999px;background:${color};border:3px solid white;box-shadow:0 4px 12px ${color}55;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:800;">${label}</div>`,
+    className: "",
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    popupAnchor: [0, -16]
+  });
+};
+
 const toLatLng = (log) => [log.location.lat, log.location.lng];
 
-export default function RouteMap({ logs = [], visitedClients = [], dwellZones = [], showDwell = true }) {
+export default function RouteMap({ logs = [], visitedClients = [], breakEvents = [], dwellZones = [], showDwell = true }) {
   const [mounted, setMounted] = useState(false);
   const [routePositions, setRoutePositions] = useState([]);
 
@@ -143,6 +157,30 @@ export default function RouteMap({ logs = [], visitedClients = [], dwellZones = 
                 <div style={{ fontSize: "13px", color: "#0f172a", fontWeight: "700", marginTop: "4px" }}>{client.clientName}</div>
                 <div style={{ fontSize: "11px", color: "#475569", marginTop: "2px" }}>{client.businessName || client.clientPhone}</div>
                 <div style={{ fontSize: "11px", color: "#64748b", marginTop: "2px" }}>{client.addressText || client.address?.formatted || "Unknown address"}</div>
+                <div style={{ fontSize: "11px", color: "#475569", marginTop: "6px" }}><strong>Outcome:</strong> {client.visitOutcome || "visited"}</div>
+                {client.notes && <div style={{ fontSize: "11px", color: "#475569", marginTop: "4px" }}><strong>Notes:</strong> {client.notes}</div>}
+                <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "6px" }}>{new Date(client.createdAt || client.timestamp).toLocaleString()}</div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+        {breakEvents.map((event) => (
+          <Marker
+            key={event._id}
+            position={[event.lat, event.lng]}
+            icon={createBreakIcon(event.type)}
+          >
+            <Popup>
+              <div style={{ padding: "4px", minWidth: "170px", fontFamily: "'Inter',sans-serif" }}>
+                <div style={{ fontSize: "10px", color: event.type === "break_start" ? "#f59e0b" : "#8b5cf6", fontWeight: "800", textTransform: "uppercase" }}>
+                  {event.type === "break_start" ? "Break Started" : "Break Ended"}
+                </div>
+                <div style={{ fontSize: "12px", color: "#475569", marginTop: "6px" }}>
+                  {event.address?.formatted || `${event.lat.toFixed(4)}, ${event.lng.toFixed(4)}`}
+                </div>
+                <div style={{ fontSize: "10px", color: "#94a3b8", marginTop: "6px" }}>
+                  {new Date(event.timestamp).toLocaleString()}
+                </div>
               </div>
             </Popup>
           </Marker>

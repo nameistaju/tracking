@@ -4,13 +4,37 @@ import { useAuth } from "@/context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, LogIn, ArrowRight, ShieldCheck, User as UserIcon, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { signInWithPopup } from "firebase/auth";
+import { auth, provider } from "@/lib/firebase";
+
+const GoogleIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" className="w-5 h-5">
+    <path
+      d="M21.805 10.023H12.24v3.955h5.481c-.236 1.272-.956 2.35-2.012 3.07v2.55h3.256c1.906-1.756 3-4.343 3-7.41 0-.72-.064-1.412-.18-2.065Z"
+      fill="#4285F4"
+    />
+    <path
+      d="M12.24 22c2.735 0 5.029-.906 6.706-2.453l-3.256-2.55c-.905.607-2.061.965-3.45.965-2.648 0-4.891-1.788-5.694-4.193H3.18v2.631A10.126 10.126 0 0 0 12.24 22Z"
+      fill="#34A853"
+    />
+    <path
+      d="M6.546 13.77a6.092 6.092 0 0 1 0-3.54V7.6H3.18a10.125 10.125 0 0 0 0 9.03l3.366-2.86Z"
+      fill="#FBBC04"
+    />
+    <path
+      d="M12.24 6.038c1.489 0 2.826.512 3.879 1.516l2.91-2.91C17.264 2.999 14.97 2 12.24 2A10.126 10.126 0 0 0 3.18 7.6l3.366 2.63c.803-2.406 3.046-4.192 5.694-4.192Z"
+      fill="#EA4335"
+    />
+  </svg>
+);
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [loginType, setLoginType] = useState(null); // null = chooser, 'admin', 'intern'
 
   const handleSubmit = async (e) => {
@@ -22,6 +46,20 @@ export default function LoginPage() {
     } catch (err) {
       setError("Invalid credentials. Please check your email and password.");
       setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setGoogleLoading(true);
+    setError("");
+
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const firebaseToken = await result.user.getIdToken();
+      await loginWithGoogle(firebaseToken);
+    } catch (err) {
+      setError("Google sign-in failed. Please try again.");
+      setGoogleLoading(false);
     }
   };
 
@@ -235,6 +273,37 @@ export default function LoginPage() {
             )}
           </motion.button>
         </form>
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="mt-4"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">or</span>
+            <div className="h-px flex-1 bg-slate-200" />
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.015, y: -1 }}
+            whileTap={{ scale: 0.985 }}
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading || googleLoading}
+            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[15px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-70 flex items-center justify-center gap-3"
+          >
+            {googleLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <GoogleIcon />
+                Continue with Google
+              </>
+            )}
+          </motion.button>
+        </motion.div>
 
         <motion.p
           initial={{ opacity: 0 }}

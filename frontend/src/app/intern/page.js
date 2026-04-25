@@ -25,9 +25,11 @@ import {
   UserPlus,
   Play,
   Square,
+  Coffee,
   Building2,
   Mail,
   Crosshair,
+  TimerReset,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import api, { authConfig, buildApiUrl } from "@/lib/api";
@@ -44,18 +46,21 @@ const getGpsQuality = (accuracy) => {
 
 export default function InternPage() {
   const { user, logout } = useAuth();
-  const [stats, setStats] = useState({ leadsCount: 0, recentAttendance: [], todayPings: 0 });
+  const [stats, setStats] = useState({ leadsCount: 0, recentAttendance: [], todayPings: 0, todayAttendance: null, breakActive: false });
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState({ type: "", text: "" });
   const [isTracking, setIsTracking] = useState(false);
+  const [isOnBreak, setIsOnBreak] = useState(false);
   const [lastPing, setLastPing] = useState(null);
   const [lastAddress, setLastAddress] = useState(null);
   const [batteryLevel, setBatteryLevel] = useState(null);
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
   const [gpsQuality, setGpsQualityState] = useState("unknown");
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(false);
   const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [workDurationMs, setWorkDurationMs] = useState(0);
   const watchIdRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const lastSentLocationRef = useRef(null);
@@ -74,11 +79,36 @@ export default function InternPage() {
   useEffect(() => {
     if (user) {
       fetchStats();
-      startBackgroundTracking();
       monitorBattery();
     }
     return () => stopBackgroundTracking();
   }, [user]);
+
+  useEffect(() => {
+    setIsOnBreak(Boolean(stats.breakActive));
+    const sessionActive = Boolean(stats.todayAttendance?.checkIn?.time) && !stats.todayAttendance?.checkOut?.time;
+    setIsTracking(sessionActive);
+
+    if (sessionActive) {
+      startBackgroundTracking();
+    } else {
+      stopBackgroundTracking();
+    }
+
+    if (!sessionActive) {
+      setWorkDurationMs(0);
+      return undefined;
+    }
+
+    const tick = () => {
+      const startTime = new Date(stats.todayAttendance.checkIn.time).getTime();
+      setWorkDurationMs(Math.max(Date.now() - startTime, 0));
+    };
+
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [stats.todayAttendance, stats.breakActive]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -99,7 +129,7 @@ export default function InternPage() {
     setShowInstallPrompt(false);
   };
 
-  const monitorBattery = async () => {
+  async function monitorBattery() {
     try {
       if ("getBattery" in navigator) {
         const battery = await navigator.getBattery();
@@ -109,7 +139,7 @@ export default function InternPage() {
         });
       }
     } catch (_error) {}
-  };
+  }
 
   const openDB = () =>
     new Promise((resolve, reject) => {
@@ -189,7 +219,7 @@ export default function InternPage() {
     }
   };
 
-  const startBackgroundTracking = () => {
+  function startBackgroundTracking() {
     if (!navigator.geolocation || watchIdRef.current !== null) return;
     setIsTracking(true);
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -212,9 +242,9 @@ export default function InternPage() {
     if (user) {
       api.post("/api/intern/tracking-status", { status: "active" }, authConfig(user.token)).catch(() => {});
     }
-  };
+  }
 
-  const stopBackgroundTracking = () => {
+  function stopBackgroundTracking() {
     setIsTracking(false);
     if (watchIdRef.current !== null && navigator.geolocation) {
       navigator.geolocation.clearWatch(watchIdRef.current);
@@ -225,26 +255,24 @@ export default function InternPage() {
     if (user) {
       api.post("/api/intern/tracking-status", { status: "stopped" }, authConfig(user.token)).catch(() => {});
     }
-  };
+  }
 
-  const toggleTracking = () => {
+  function toggleTracking() {
     if (isTracking) {
-      stopBackgroundTracking();
-      showStatus("info", "Tracking paused");
+      handleEndWork();
     } else {
-      startBackgroundTracking();
-      showStatus("success", "Tracking resumed");
+      handleStartWork();
     }
-  };
+  }
 
-  const fetchStats = async () => {
+  async function fetchStats() {
     try {
       const { data } = await api.get("/api/intern/stats", authConfig(user.token));
       setStats(data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }
 
   const showStatus = (type, text) => {
     setStatusMsg({ type, text });
@@ -268,15 +296,70 @@ export default function InternPage() {
       );
     });
 
-  const handleCheckIn = async () => {
+  const formatDuration = (durationMs) => {
+    const totalSeconds = Math.max(Math.floor(durationMs / 1000), 0);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+  };
+
+  const handleStartWork = async () => {
     setLoading(true);
     try {
       const loc = await getLocation();
-      await api.post("/api/intern/checkin", loc, authConfig(user.token));
-      showStatus("success", "Check-in successful!");
+      await api.post("/api/intern/checkin", loc, authConfig(user.token)).catch((error) => {
+        if (error.response?.data?.message !== "Already checked in today") {
+          throw error;
+        }
+      });
+      await api.post("/api/intern/tracking-status", { status: "active" }, authConfig(user.token));
+      startBackgroundTracking();
+      showStatus("success", "Work started. Live tracking is active.");
       fetchStats();
     } catch (err) {
-      showStatus("error", err.message === "User denied Geolocation" ? "Enable GPS access" : err.response?.data?.message || err.message);
+      showStatus("error", err.response?.data?.message || "Unable to start work.");
+    }
+    setLoading(false);
+  };
+
+  const handleEndWork = async () => {
+    setLoading(true);
+    try {
+      let loc = null;
+      try {
+        loc = await getLocation();
+      } catch (_error) {}
+
+      stopBackgroundTracking();
+      await api.post("/api/intern/checkout", loc || {}, authConfig(user.token));
+      await api.post("/api/intern/tracking-status", { status: "stopped" }, authConfig(user.token));
+      setIsOnBreak(false);
+      showStatus("info", "Work ended for today.");
+      fetchStats();
+    } catch (err) {
+      showStatus("error", err.response?.data?.message || "Unable to end work.");
+    }
+    setLoading(false);
+  };
+
+  const handleBreakToggle = async () => {
+    if (!isTracking) {
+      showStatus("error", "Start work before using breaks.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const loc = await getLocation();
+      const nextType = isOnBreak ? "break_end" : "break_start";
+      await api.post("/api/intern/event", { type: nextType, ...loc }, authConfig(user.token));
+      setIsOnBreak(!isOnBreak);
+      setShowQuickActions(false);
+      showStatus("success", isOnBreak ? "Break ended." : "Break started.");
+      fetchStats();
+    } catch (err) {
+      showStatus("error", err.response?.data?.message || "Unable to update break.");
     }
     setLoading(false);
   };
@@ -357,26 +440,31 @@ export default function InternPage() {
                 <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                   {lastPing && <p className="text-[11px] text-text-muted flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> {lastPing.toLocaleTimeString()}</p>}
                   {lastAddress && <p className="text-[11px] text-text-muted flex items-center gap-1 truncate max-w-[180px]"><MapPin className="w-2.5 h-2.5 flex-shrink-0" /> {lastAddress}</p>}
+                  {isOnBreak && <p className="text-[11px] text-amber-700 font-semibold flex items-center gap-1"><Coffee className="w-3 h-3" /> On Break</p>}
                 </div>
               </div>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-text-muted">Work Time</p>
+              <p className="text-lg font-black text-text-primary tabular-nums">{formatDuration(workDurationMs)}</p>
             </div>
           </div>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15 }} className="grid grid-cols-2 gap-3 mb-6">
           <motion.button whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.97 }} onClick={toggleTracking} className={`col-span-2 flex items-center justify-center gap-3 py-5 rounded-2xl font-bold text-base transition-all shadow-lg ${isTracking ? "bg-gradient-to-r from-red-500 to-rose-500 text-white shadow-red-200" : "bg-gradient-to-r from-primary to-primary-light text-white shadow-primary/25"}`}>
-            {isTracking ? <><Square className="w-5 h-5" /> End Work</> : <><Play className="w-5 h-5" /> Start Work</>}
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : isTracking ? <><Square className="w-5 h-5" /> End Work</> : <><Play className="w-5 h-5" /> Start Work</>}
           </motion.button>
-
-          <motion.button whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.97 }} onClick={handleCheckIn} disabled={loading} className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-white border-2 border-border font-semibold text-sm text-text-primary hover:border-primary/20 hover:shadow-md transition-all">
-            {loading ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : <MapPin className="w-4 h-4 text-primary" />}
-            Check In
-          </motion.button>
-
-          <motion.button whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.97 }} onClick={() => setShowLeadForm(true)} className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-white border-2 border-border font-semibold text-sm text-text-primary hover:border-violet-200 hover:shadow-md transition-all">
-            <UserPlus className="w-4 h-4 text-violet-500" />
-            Add Client
-          </motion.button>
+          <div className="col-span-2 grid grid-cols-2 gap-3">
+            <motion.button whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.97 }} onClick={() => setShowLeadForm(true)} className="flex items-center justify-center gap-2 py-4 rounded-2xl bg-white/90 backdrop-blur border-2 border-border font-semibold text-sm text-text-primary hover:border-violet-200 hover:shadow-md transition-all">
+              <UserPlus className="w-4 h-4 text-violet-500" />
+              Add Client
+            </motion.button>
+            <motion.button whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.97 }} onClick={handleBreakToggle} disabled={!isTracking || loading} className={`flex items-center justify-center gap-2 py-4 rounded-2xl border-2 font-semibold text-sm transition-all ${isTracking ? "bg-white/90 backdrop-blur border-border text-text-primary hover:border-amber-200 hover:shadow-md" : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"}`}>
+              {loading ? <Loader2 className="w-4 h-4 animate-spin text-primary" /> : isOnBreak ? <TimerReset className="w-4 h-4 text-violet-500" /> : <Coffee className="w-4 h-4 text-amber-500" />}
+              {isOnBreak ? "End Break" : "Start Break"}
+            </motion.button>
+          </div>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="grid grid-cols-3 gap-3 mb-6">
@@ -429,9 +517,26 @@ export default function InternPage() {
         </motion.div>
       </div>
 
-      <motion.button initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.5, type: "spring", stiffness: 300, damping: 20 }} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowLeadForm(true)} className="fixed bottom-8 right-6 w-14 h-14 bg-gradient-to-br from-primary to-primary-light text-white rounded-full shadow-xl shadow-primary/30 flex items-center justify-center z-50">
-        <PlusCircle className="w-6 h-6" />
-      </motion.button>
+      <div className="fixed bottom-8 right-6 z-50 flex flex-col items-end gap-3">
+        <AnimatePresence>
+          {showQuickActions && (
+            <>
+              <motion.button initial={{ opacity: 0, y: 12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.9 }} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={() => { setShowLeadForm(true); setShowQuickActions(false); }} className="flex items-center gap-2 rounded-2xl bg-white/95 backdrop-blur px-4 py-3 border border-border shadow-lg text-sm font-semibold text-text-primary">
+                <UserPlus className="w-4 h-4 text-violet-500" />
+                Add Client
+              </motion.button>
+              <motion.button initial={{ opacity: 0, y: 12, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 12, scale: 0.9 }} whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={handleBreakToggle} disabled={!isTracking || loading} className={`flex items-center gap-2 rounded-2xl px-4 py-3 border shadow-lg text-sm font-semibold ${isTracking ? "bg-white/95 backdrop-blur border-border text-text-primary" : "bg-slate-100 border-slate-200 text-slate-400"}`}>
+                {isOnBreak ? <TimerReset className="w-4 h-4 text-violet-500" /> : <Coffee className="w-4 h-4 text-amber-500" />}
+                {isOnBreak ? "End Break" : "Start Break"}
+              </motion.button>
+            </>
+          )}
+        </AnimatePresence>
+
+        <motion.button initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.5, type: "spring", stiffness: 300, damping: 20 }} whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowQuickActions((value) => !value)} className="w-14 h-14 bg-gradient-to-br from-primary to-primary-light text-white rounded-full shadow-xl shadow-primary/30 flex items-center justify-center">
+          <PlusCircle className={`w-6 h-6 transition-transform ${showQuickActions ? "rotate-45" : ""}`} />
+        </motion.button>
+      </div>
 
       <AnimatePresence>
         {showLeadForm && (

@@ -29,7 +29,7 @@ import api, { authConfig } from "@/lib/api";
 
 const LiveMap = dynamic(() => import("@/components/LiveMap"), { ssr: false });
 
-const POLL_INTERVAL = 15000;
+const POLL_INTERVAL = 7000;
 
 function AgentCard({ agent, index, isSelected, onClick }) {
   const isOnline = agent.isOnline;
@@ -103,17 +103,22 @@ export default function AdminPage() {
   const [focusedAgentId, setFocusedAgentId] = useState(null);
   const [agentSearch, setAgentSearch] = useState("");
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [recentBreakEvents, setRecentBreakEvents] = useState([]);
   const pollingRef = useRef(null);
+  const pollingInFlightRef = useRef(false);
 
   const fetchAgents = useCallback(async () => {
-    if (!user) return;
+    if (!user || pollingInFlightRef.current) return;
 
     try {
+      pollingInFlightRef.current = true;
       const response = await api.get("/api/admin/live-agents", authConfig(user.token));
       setAgents(response.data);
       setLastRefresh(new Date());
     } catch (error) {
       console.error(error);
+    } finally {
+      pollingInFlightRef.current = false;
     }
   }, [user]);
 
@@ -149,10 +154,60 @@ export default function AdminPage() {
     return () => clearInterval(pollingRef.current);
   }, [isPolling, fetchAgents]);
 
+  useEffect(() => {
+    if (!user || !focusedAgentId) {
+      setRecentBreakEvents([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const today = new Date().toISOString().split("T")[0];
+    api.get(`/api/admin/events/${focusedAgentId}?date=${today}`, authConfig(user.token))
+      .then((response) => {
+        if (!cancelled) {
+          setRecentBreakEvents(response.data);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error(error);
+          setRecentBreakEvents([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, focusedAgentId]);
+
   if (!user) return null;
 
   const onlineCount = agents.filter((agent) => agent.isOnline).length;
   const agentsWithLocation = agents.filter((agent) => agent.lastSeen?.lat);
+  const focusedAgent = agents.find((agent) => agent._id === focusedAgentId) || null;
+  const recentActivity = [
+    ...leads.slice(0, 5).map((lead) => ({
+      _id: `lead-${lead._id}`,
+      type: "client",
+      title: lead.clientName,
+      subtitle: lead.businessName || lead.userId?.name || "Client visit",
+      detail: lead.address?.formatted || lead.addressText || "Location attached",
+      timestamp: lead.createdAt || lead.timestamp,
+      accent: "violet",
+    })),
+    ...recentBreakEvents.slice(-5).map((event) => ({
+      _id: `break-${event._id}`,
+      type: event.type,
+      title: event.type === "break_start" ? "Break Started" : "Break Ended",
+      subtitle: focusedAgent?.name || "Field intern",
+      detail: event.address?.formatted || `${event.lat.toFixed(4)}, ${event.lng.toFixed(4)}`,
+      timestamp: event.timestamp,
+      accent: event.type === "break_start" ? "amber" : "blue",
+    })),
+  ]
+    .sort((first, second) => new Date(second.timestamp) - new Date(first.timestamp))
+    .slice(0, 8);
   const filteredAgents = agents.filter((agent) =>
     agent.name.toLowerCase().includes(agentSearch.toLowerCase()) ||
     agent.email.toLowerCase().includes(agentSearch.toLowerCase())
@@ -284,6 +339,51 @@ export default function AdminPage() {
               </div>
               <div className="flex-1 min-h-0">
                 <LiveMap agents={agentsWithLocation} focusedAgentId={focusedAgentId} />
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.32 }}
+              className="bg-white/90 backdrop-blur border border-border rounded-2xl p-4 md:p-5"
+            >
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h2 className="text-[13px] font-semibold text-text-primary">Recent Activity</h2>
+                  <p className="text-[11px] text-text-muted">
+                    {focusedAgent ? `Client visits and breaks for ${focusedAgent.name}` : "Recent client visits across the team"}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <div className="px-3 py-2 rounded-2xl bg-white border border-border shadow-sm">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-text-muted">Active Interns</p>
+                    <p className="text-lg font-black text-text-primary">{onlineCount}</p>
+                  </div>
+                  <div className="px-3 py-2 rounded-2xl bg-white border border-border shadow-sm">
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-text-muted">Leads Today</p>
+                    <p className="text-lg font-black text-text-primary">{summary.leadsTodayCount || 0}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {recentActivity.length === 0 ? (
+                  <p className="text-xs text-text-muted py-6 text-center">No recent activity yet.</p>
+                ) : recentActivity.map((item) => (
+                  <div key={item._id} className="rounded-2xl border border-border bg-surface-alt/50 px-4 py-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-text-primary">{item.title}</p>
+                      <p className="text-[11px] text-text-secondary mt-0.5">{item.subtitle}</p>
+                      <p className="text-[10px] text-text-muted mt-1 truncate">{item.detail}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className={`text-[10px] font-bold ${item.accent === "violet" ? "text-violet-500" : item.accent === "amber" ? "text-amber-600" : "text-primary"}`}>
+                        {item.type === "client" ? "CLIENT" : item.type === "break_start" ? "BREAK" : "RESUME"}
+                      </p>
+                      <p className="text-[10px] text-text-muted mt-1">{new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </motion.div>
 

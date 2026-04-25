@@ -18,6 +18,7 @@ export default function RoutesPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [routeData, setRouteData] = useState(null);
   const [dwellZones, setDwellZones] = useState([]);
+  const [breakEvents, setBreakEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState("route");
 
@@ -46,6 +47,7 @@ export default function RoutesPage() {
         api.get(`/api/admin/dwell-zones/${selectedAgent._id}?date=${selectedDate}`, authConfig(user.token))
       ]);
       setRouteData(routeRes.data);
+      setBreakEvents(routeRes.data.breakEvents || []);
       setDwellZones(dwellRes.data);
     } catch (error) {
       console.error(error);
@@ -197,6 +199,25 @@ export default function RoutesPage() {
                   </div>
                 )}
 
+                {breakEvents.length > 0 && (
+                  <div>
+                    <h3 className="text-[11px] text-text-muted font-semibold uppercase tracking-wider mb-2">Break Events ({breakEvents.length})</h3>
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                      {breakEvents.map((event, index) => (
+                        <motion.div key={event._id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.04 }} className={`p-3 rounded-xl border ${event.type === "break_start" ? "bg-amber-50 border-amber-100" : "bg-violet-50 border-violet-100"}`}>
+                          <div className="flex justify-between items-start gap-2">
+                            <p className={`text-xs font-bold ${event.type === "break_start" ? "text-amber-700" : "text-violet-600"}`}>
+                              {event.type === "break_start" ? "Break Started" : "Break Ended"}
+                            </p>
+                            <span className="text-[9px] text-text-muted">{new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <p className="text-[10px] text-text-muted mt-1 truncate">{event.address?.formatted || `${event.lat.toFixed(4)}, ${event.lng.toFixed(4)}`}</p>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {dwellZones.length > 0 && (
                   <div>
                     <h3 className="text-[11px] text-text-muted font-semibold uppercase tracking-wider mb-2">Dwell Zones ({dwellZones.length})</h3>
@@ -222,7 +243,7 @@ export default function RoutesPage() {
 
           <div className="flex-1 min-h-[420px] xl:min-h-0">
             {viewMode === "route" ? (
-              <RouteMap logs={routeData?.logs || []} visitedClients={routeData?.visitedClients || []} dwellZones={dwellZones} showDwell={true} />
+              <RouteMap logs={routeData?.logs || []} visitedClients={routeData?.visitedClients || []} breakEvents={breakEvents} dwellZones={dwellZones} showDwell={true} />
             ) : (
               <RoutePlayback logs={routeData?.logs || []} userName={selectedAgent?.name || ""} />
             )}

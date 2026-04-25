@@ -4,11 +4,20 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 
 const AuthContext = createContext();
+const USER_STORAGE_KEY = "user";
 
 const getStoredUser = () => {
   if (typeof window === "undefined") return null;
-  const storedUser = localStorage.getItem("user");
+  const storedUser = localStorage.getItem(USER_STORAGE_KEY);
   return storedUser ? JSON.parse(storedUser) : null;
+};
+
+const persistAuth = (data) => {
+  localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(data));
+};
+
+const clearAuth = () => {
+  localStorage.removeItem(USER_STORAGE_KEY);
 };
 
 export const AuthProvider = ({ children }) => {
@@ -23,7 +32,7 @@ export const AuthProvider = ({ children }) => {
       (error) => {
         if (error.response?.status === 401) {
           setUser(null);
-          localStorage.removeItem("user");
+          clearAuth();
           router.push("/login");
         }
         return Promise.reject(error);
@@ -35,19 +44,27 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const { data } = await api.post("/api/auth/login", { email, password });
     setUser(data);
-    localStorage.setItem("user", JSON.stringify(data));
+    persistAuth(data);
+    if (data.role === "Admin") router.push("/admin");
+    else router.push("/intern");
+  };
+
+  const loginWithGoogle = async (firebaseToken) => {
+    const { data } = await api.post("/api/auth/google", { token: firebaseToken });
+    setUser(data);
+    persistAuth(data);
     if (data.role === "Admin") router.push("/admin");
     else router.push("/intern");
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem("user");
+    clearAuth();
     router.push("/login");
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, loginWithGoogle, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );
