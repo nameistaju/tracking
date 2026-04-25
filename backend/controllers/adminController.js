@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Attendance = require('../models/Attendance');
 const LocationLog = require('../models/LocationLog');
+const Event = require('../models/Event');
 const DwellZone = require('../models/DwellZone');
 const Alert = require('../models/Alert');
 const { haversineDistance } = require('../services/geocodingService');
@@ -198,6 +199,13 @@ exports.getRouteHistory = async (req, res) => {
       .sort({ createdAt: 1 })
       .lean();
 
+    const breakEvents = await Event.find({
+      userId,
+      timestamp: query.timestamp
+    })
+      .sort({ timestamp: 1 })
+      .lean();
+
     const accuracyLogs = logs.filter(log => typeof log.accuracy === 'number');
     const averageAccuracyMeters = accuracyLogs.length
       ? Math.round(accuracyLogs.reduce((sum, log) => sum + log.accuracy, 0) / accuracyLogs.length)
@@ -210,6 +218,7 @@ exports.getRouteHistory = async (req, res) => {
       user,
       logs,
       visitedClients,
+      breakEvents,
       totalPoints: logs.length,
       totalDistanceKm: calculateRouteDistance(logs),
       averageAccuracyMeters,
@@ -244,6 +253,33 @@ exports.getDwellZones = async (req, res) => {
     );
 
     res.json(zones);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get events for a user
+// @route   GET /api/admin/events/:userId
+exports.getUserEvents = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { date, startDate, endDate } = req.query;
+    const query = { userId };
+
+    if (date) {
+      query.timestamp = {
+        $gte: new Date(`${date}T00:00:00.000Z`),
+        $lte: new Date(`${date}T23:59:59.999Z`)
+      };
+    } else if (startDate && endDate) {
+      query.timestamp = {
+        $gte: new Date(`${startDate}T00:00:00.000Z`),
+        $lte: new Date(`${endDate}T23:59:59.999Z`)
+      };
+    }
+
+    const events = await Event.find(query).sort({ timestamp: 1 }).lean();
+    res.json(events);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

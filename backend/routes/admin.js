@@ -8,6 +8,7 @@ const {
   getLiveAgents,
   getRouteHistory,
   getDwellZones,
+  getUserEvents,
   getAnalyticsSummary,
   getUserAnalytics,
   getDailyInternReport,
@@ -30,6 +31,7 @@ router.get('/live-agents', protect, admin, getLiveAgents);
 
 // NEW: Route history & playback
 router.get('/route-history/:userId', protect, admin, getRouteHistory);
+router.get('/events/:userId', protect, admin, getUserEvents);
 
 // NEW: Dwell zones
 router.get('/dwell-zones/:userId', protect, admin, getDwellZones);

@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const ttlDays = parseInt(process.env.LOCATION_LOG_TTL_DAYS || '7', 10);
+const ttlSeconds = Math.max(ttlDays, 1) * 24 * 60 * 60;
 
 const locationLogSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -28,6 +30,7 @@ const locationLogSchema = new mongoose.Schema({
 
 locationLogSchema.index({ userId: 1, timestamp: -1 });
 locationLogSchema.index({ timestamp: -1 });
+locationLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: ttlSeconds });
 locationLogSchema.index({ 'address.city': 1 });
 
 module.exports = mongoose.model('LocationLog', locationLogSchema);
